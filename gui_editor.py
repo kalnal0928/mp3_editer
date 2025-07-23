@@ -237,26 +237,33 @@ class App(ctk.CTk):
 
     def pause_audio(self):
         if pygame.mixer.music.get_busy():
-            # Store current position before stopping
             self.seek_pos_ms += pygame.mixer.music.get_pos()
             pygame.mixer.music.stop()
             self.paused = True
-            # Manually set slider to make sure UI is up to date
+            # Temporarily disable command to prevent seek_audio callback
+            original_command = self.progress_slider.cget("command")
+            self.progress_slider.configure(command=None)
             self.progress_slider.set(self.seek_pos_ms)
+            self.progress_slider.configure(command=original_command)
 
     def stop_audio(self):
         pygame.mixer.music.stop()
         self.playback_active = False
-        self.paused = False # Make sure paused is false
+        self.paused = False
         self.seek_pos_ms = 0
         self.progress_slider.set(0)
         self.time_label.configure(text=f"00:00 / {format_time(self.song_length_ms)}")
 
     def seek_audio(self, value):
-        if pygame.mixer.music.get_busy():
+        value = float(value)
+        # Seeking should work if playback is active (playing or paused)
+        if self.playback_active:
             self.stop_audio()
-            self.progress_slider.set(float(value))
+            self.progress_slider.set(value)
             self.play_audio()
+        else:
+            # If stopped, just set the slider. Play will pick it up.
+            self.progress_slider.set(value)
 
     def update_progress(self):
         if pygame.mixer.music.get_busy() and not self.paused:
@@ -265,7 +272,11 @@ class App(ctk.CTk):
                 self.stop_audio()
             else:
                 self.time_label.configure(text=f"{format_time(current_pos)} / {format_time(self.song_length_ms)}")
+                # Temporarily disable command to prevent seek_audio callback
+                original_command = self.progress_slider.cget("command")
+                self.progress_slider.configure(command=None)
                 self.progress_slider.set(current_pos)
+                self.progress_slider.configure(command=original_command)
                 self.after(250, self.update_progress)
         elif not pygame.mixer.music.get_busy() and self.playback_active:
              self.stop_audio()
