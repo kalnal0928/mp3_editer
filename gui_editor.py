@@ -46,6 +46,7 @@ class App(ctk.CTk):
         self.playback_active = False
         self.paused = False
         self.song_length_ms = 0
+        self.seek_pos_ms = 0
 
         ctk.set_appearance_mode("System")
         ctk.set_default_color_theme("blue")
@@ -219,22 +220,35 @@ class App(ctk.CTk):
 
     def play_audio(self):
         if not self.player_file_path: return messagebox.showwarning("경고", "먼저 파일을 선택하세요.")
-        if not self.playback_active:
-            pygame.mixer.music.play(start=self.progress_slider.get() / 1000)
-            self.playback_active = True
-        elif self.paused:
-            pygame.mixer.music.unpause()
+
+        # If music is already playing and we are not paused, do nothing.
+        if pygame.mixer.music.get_busy() and not self.paused:
+            return
+
+        # If we are resuming from a pause, self.seek_pos_ms is already set.
+        # If we are starting fresh, we get the position from the slider.
+        if not self.paused:
+            self.seek_pos_ms = self.progress_slider.get()
+
+        pygame.mixer.music.play(start=self.seek_pos_ms / 1000)
+        self.playback_active = True
         self.paused = False
         self.update_progress()
 
     def pause_audio(self):
-        if self.playback_active and not self.paused:
-            pygame.mixer.music.pause()
+        if pygame.mixer.music.get_busy():
+            # Store current position before stopping
+            self.seek_pos_ms += pygame.mixer.music.get_pos()
+            pygame.mixer.music.stop()
             self.paused = True
+            # Manually set slider to make sure UI is up to date
+            self.progress_slider.set(self.seek_pos_ms)
 
     def stop_audio(self):
         pygame.mixer.music.stop()
         self.playback_active = False
+        self.paused = False # Make sure paused is false
+        self.seek_pos_ms = 0
         self.progress_slider.set(0)
         self.time_label.configure(text=f"00:00 / {format_time(self.song_length_ms)}")
 
@@ -246,7 +260,7 @@ class App(ctk.CTk):
 
     def update_progress(self):
         if pygame.mixer.music.get_busy() and not self.paused:
-            current_pos = pygame.mixer.music.get_pos() + self.progress_slider.get()
+            current_pos = self.seek_pos_ms + pygame.mixer.music.get_pos()
             if current_pos >= self.song_length_ms:
                 self.stop_audio()
             else:
