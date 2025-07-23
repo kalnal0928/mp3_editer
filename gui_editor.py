@@ -221,65 +221,57 @@ class App(ctk.CTk):
     def play_audio(self):
         if not self.player_file_path: return messagebox.showwarning("경고", "먼저 파일을 선택하세요.")
 
-        # If music is already playing and we are not paused, do nothing.
-        if pygame.mixer.music.get_busy() and not self.paused:
-            return
-
-        # If we are resuming from a pause, self.seek_pos_ms is already set.
-        # If we are starting fresh, we get the position from the slider.
-        if not self.paused:
+        if self.paused:
+            pygame.mixer.music.unpause()
+            self.paused = False
+        elif not self.playback_active:
             self.seek_pos_ms = self.progress_slider.get()
-
-        pygame.mixer.music.play(start=self.seek_pos_ms / 1000)
-        self.playback_active = True
-        self.paused = False
+            pygame.mixer.music.play(start=self.seek_pos_ms / 1000)
+            self.playback_active = True
+        
         self.update_progress()
 
     def pause_audio(self):
-        if pygame.mixer.music.get_busy():
-            self.seek_pos_ms += pygame.mixer.music.get_pos()
-            pygame.mixer.music.stop()
+        if self.playback_active and not self.paused:
+            pygame.mixer.music.pause()
             self.paused = True
-            # Temporarily disable command to prevent seek_audio callback
-            original_command = self.progress_slider.cget("command")
-            self.progress_slider.configure(command=None)
-            self.progress_slider.set(self.seek_pos_ms)
-            self.progress_slider.configure(command=original_command)
 
     def stop_audio(self):
         pygame.mixer.music.stop()
         self.playback_active = False
         self.paused = False
         self.seek_pos_ms = 0
+        
+        original_command = self.progress_slider.cget("command")
+        self.progress_slider.configure(command=None)
         self.progress_slider.set(0)
+        self.progress_slider.configure(command=original_command)
+        
         self.time_label.configure(text=f"00:00 / {format_time(self.song_length_ms)}")
 
     def seek_audio(self, value):
-        value = float(value)
-        # Seeking should work if playback is active (playing or paused)
         if self.playback_active:
-            self.stop_audio()
-            self.progress_slider.set(value)
-            self.play_audio()
-        else:
-            # If stopped, just set the slider. Play will pick it up.
-            self.progress_slider.set(value)
+            self.seek_pos_ms = float(value)
+            pygame.mixer.music.play(start=self.seek_pos_ms / 1000)
+            if self.paused:
+                self.paused = False
+                self.update_progress()
 
     def update_progress(self):
-        if pygame.mixer.music.get_busy() and not self.paused:
+        if pygame.mixer.music.get_busy() and self.playback_active and not self.paused:
             current_pos = self.seek_pos_ms + pygame.mixer.music.get_pos()
+            
             if current_pos >= self.song_length_ms:
                 self.stop_audio()
             else:
                 self.time_label.configure(text=f"{format_time(current_pos)} / {format_time(self.song_length_ms)}")
-                # Temporarily disable command to prevent seek_audio callback
+                
                 original_command = self.progress_slider.cget("command")
                 self.progress_slider.configure(command=None)
                 self.progress_slider.set(current_pos)
                 self.progress_slider.configure(command=original_command)
+                
                 self.after(250, self.update_progress)
-        elif not pygame.mixer.music.get_busy() and self.playback_active:
-             self.stop_audio()
 
     def set_time_from_player(self, target):
         current_time_ms = self.progress_slider.get()
